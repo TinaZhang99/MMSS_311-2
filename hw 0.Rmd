@@ -1,0 +1,184 @@
+---
+title: "Homework 0"
+author: "Tina Zhang"
+date: "2019/4/14"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+###Question 1
+```{r p1}
+a <- 1:5
+print(a)
+
+Mindy <- 12
+print(Mindy)
+
+c <- matrix(1:6, nrow = 2, ncol = 3, byrow=TRUE)
+print(c)
+
+d <- matrix(1:6, nrow = 2, ncol = 3)
+print(d)
+
+e <- matrix(1, nrow = 10, ncol = 10)
+f <- c ("THIS", "IS", "A", "VECTOR")
+g <- function(a, b, c) {
+  sum <- a+b+c
+  return(sum)
+}
+
+h <- function(numb) {
+  if(numb > 10){
+    ret <- "No"
+  }
+  else{
+    ret <- "Yes"
+  }
+  return(ret)
+}
+set.seed(235)
+g <- rnorm(1000, 10, 1)
+y <- rnorm(1000, 5, 0.5)
+x <- 1:1000
+for (i in 1:1000)
+{
+  x[i] <- mean(sample(g,10, TRUE))
+}
+fit <- lm(y ~ x)
+summary(fit)
+```
+The results show the estimated regression equation to be y = 5.47333 -0.04568x.
+The R-squared is 0.0008481 and the adjusted R-squared is -0.000153, which is very low.
+The intercept is significantly different from 0, but the coefficient is not.
+Overall this suggests x's explanatory power of y is very low.
+
+###Question 2a,b
+```{r 2ab, warning=FALSE}
+library("descr")
+library("ggplot2")
+
+setwd("C:/Users/tzwhi/Desktop/Northwestern/311-2/R")
+pums <- read.csv("pums_chicago.csv")
+print(dim(pums))
+```
+There are 204 variables in the dataset
+
+###Question 2(c)
+```{r 2c}
+mai <- mean(pums$PINCP, na.rm=TRUE)
+print(mai)
+```
+The mean annual income is approximately $38,247.62
+
+###Question 2(d)
+```{r 2(d), warning=FALSE}
+pums$PINCP_LOG <- log(pums$PINCP)
+```
+NaNs were produced because some entries of PINCP have values of 0 or NA
+
+###Question 2 e-j
+```{r 2e-j}
+# Assumes that GED/alternative credential doesn't count as post-high-school education
+grad_dummy <- c()
+for(i in 1:5000){
+  grad_dummy[i] <- "no grad"
+  if(!is.na(pums$SCHL[i]) & pums$SCHL[i] > 17){
+    grad_dummy[i] <- "grad"  
+  }
+}
+pums$GRAD.DUMMY <- grad_dummy
+pums$SERIALNO <- NULL
+write.csv(pums,"new dataset for part (g).csv")
+under16 <- subset(pums, is.na(ESR))
+employed <- subset(pums,ESR == 1 | ESR == 2)
+unemployed <- subset(pums, ESR == 3)
+inarmedforce <- subset(pums, ESR == 4 | ESR == 5)
+notlaborforce <- subset(pums, ESR == 6)
+#Note: I made the assumption that "Armed forces, at work" is not included in the employed category
+employed_af <- rbind(employed, inarmedforce)
+employed_af <- subset(employed_af, select = c("AGEP", "RAC1P", "PINCP_LOG"))
+```
+
+###Question 2k(i)
+mean: 34.84, median: 30, 80th percentile: 45
+```{r}
+summary(pums$JWMNP)
+print(quantile(pums$JWMNP,.8, na.rm = TRUE))
+```
+
+###Question 2k(ii)
+The correlation is -0.04205232
+```{r}
+cor(pums$JWMNP, pums$WAGP, use = "complete.obs")
+```
+
+###Question 2k(iii)-(vii)
+```{r}
+pdf("ivplot.pdf")
+plot(pums$AGEP, pums$PINCP_LOG, main = "Graph for (iii): Log Income vs. Age",
+                xlab = "Age (Years)", ylab = "Log Income", col = "#2E9FDF")
+dev.off()
+crosstab(pums$ESR, pums$RAC1P)
+Qkvi <- lm(WAGP~WKHP, pums)
+summary(Qkvi)
+plot(Qkvi$fitted.values, Qkvi$residuals,
+     main = "Graph for (vii): Residuals vs. Fitted Values",
+     xlab = "Fitted Values", ylab = "Residuals", col = "#2E9FDF")
+```
+If a linear model were specified correctly, then the residuals should appear randomly
+distributed around 0, and their values (or variance) shouldn't be correlated with the
+fitted value. After all, the residuals give us an estimate of the error term in the 
+regression equation.
+
+However, in this graph, while the variance of the residuals seems relatively constant,
+the residuals seem to exhibit a linear relation with the fitted values, and they
+definitely don't look random. This suggests that the regression model may not have been
+specified correctly, perhaps due to omitted variable bias, or perhaps because the 
+relationship between WAGP and WKHP is nonlinear.
+
+
+###Question 2(l)
+```{r 2(l)}
+data("mtcars")
+Qli <- lm(mpg~wt, mtcars)
+summary(Qli)
+manualfit <- lm(mpg~wt, subset(mtcars, am == 1))
+autofit <- lm(mpg~wt, subset(mtcars, am == 0))
+summary(manualfit)
+summary(autofit)
+Qliii <- lm(mpg~log(hp), mtcars)
+summary(Qliii)
+```
+
+###Question 2(m)i
+```{r 2(m)i}
+ggplot(mtcars)+geom_point(aes(wt, mpg)) 
+```
+
+###Question 2(m)ii
+```{r 2(m)ii}
+ggplot(mtcars)+
+  geom_point(aes(wt, mpg, color = as.factor(am)))
+```
+
+###Question 2(m)iii
+```{r 2(m)iii}
+ggplot(mtcars)+
+  geom_point(aes(wt, mpg, color = as.factor(am), shape = as.factor(gear))) 
+```
+
+###Question 2(m)iv
+```{r 2(m)iv}
+ggplot(mtcars)+
+  geom_point(aes(wt, mpg, color = as.factor(am), shape = as.factor(gear))) +
+  labs(x = "Weight (1000 lbs)", y = "Miles/(US) gallon", shape = "Number of Forward Gears", color = "Transmission (0=automatic, 1=manual)")
+```
+
+###Question 2(m)v
+```{r 2(m)v}
+ggplot(mtcars)+
+  geom_point(aes(wt, mpg, color = as.factor(am), shape = as.factor(gear))) +
+  labs(x = "Weight (1000 lbs)", y = "Miles/(US) gallon", shape = "Number of Forward Gears", color = "Transmission (0=automatic, 1=manual)") +
+  theme(panel.background = element_rect("lightblue"))
+```
