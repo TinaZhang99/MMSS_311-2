@@ -1,0 +1,188 @@
+---
+title: "Homework 1"
+author: "Tina Zhang"
+date: "2019/4/21"
+output: pdf_document
+---
+
+```{r setup, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(broom)
+library(glmnet)
+library(e1071)
+
+setwd("C:/Users/tzwhi/Desktop/Northwestern/311-2/R")
+```
+
+#Regression using OLS
+```{r}
+#a
+sick <- read.csv("sick_data.csv")
+sick$binaryr <-ifelse(sick$result=="Positive", 1, 0)
+afit <- lm(binaryr ~ temp+bp, sick)
+summary(afit)
+
+#b
+sick$fitted <- ifelse(fitted.values(afit)>=0.5, 1, 0)
+sick$rightfit <- ifelse(sick$binaryr == sick$fitted, 1, 0)
+print(mean(sick$rightfit))
+```
+b: The OLS regression predicts the test results reasonably well, with an accuracy rate 
+of 96.4%.
+
+c: The equation of the line where y-hat = 0.5 is approximately 5.713 = 0.0628temp - 0.00829bp. 
+```{r}
+#d
+ggplot(sick) +
+  geom_point(aes(bp, temp, color = result)) +
+  stat_function(fun = function(bp) 
+    (-1/afit$coefficients[2])*(afit$coefficients[1]-0.5 + afit$coefficients[3]*bp)) + labs(x = "Blood Pressure", y = "Temperature", title = "Predicting Illness from Blood Pressure and Temperature (OLS)", color = "Actual Test Result") +
+  theme(panel.background = element_rect("lightblue"))
+```
+
+#Regression using Logit
+```{r}
+#a
+logit <- glm(binaryr ~ temp+bp, data = sick, family = "binomial")
+summary(logit)
+
+#b
+sick$logfitted <- ifelse(fitted.values(logit)>=0.5, 1, 0)
+sick$logrightfit <- ifelse(sick$binaryr == sick$logfitted, 1, 0)
+print(mean(sick$logrightfit))
+```
+b: The Logit regression predicts the test results very well, with an accuracy rate 
+of 99.2%, which is an improvement upon the accuracy rate of 96.4% of the OLS model. Although, we must note that these accuracy rates are computed using the training set data.
+
+c: The equation of the line where y-hat = 0.5 is approximately 199.8267 = 2.314temp - 0.3499bp. 
+```{r}
+#d
+ggplot(sick) +
+  geom_point(aes(bp, temp, color = result)) +
+  stat_function(fun = function(bp) 
+    (-1/logit$coefficients[2])*(logit$coefficients[1]-0.5 + logit$coefficients[3]*bp))+
+  labs(x = "Blood Pressure", y = "Temperature", title = "Predicting Illness from Blood Pressure and Temperature (Logit)", color = "Actual Test Result") +
+  theme(panel.background = element_rect("lightblue"))
+```
+
+#Ridge Regularization/Selection
+```{r}
+#a
+widget <- read.csv("widget_data.csv")
+plot(widget$y)
+
+#perhaps a more useful plot of y
+ggplot(widget, aes(x = y)) + geom_histogram(bins = 30, color = "black", fill = "lightblue") +  labs(x = "y", y = "Count", title = "Plot of variable y in Widget Data", color = "Actual Test Result")+ theme(panel.background = element_rect("white"))
+
+#b
+grid <- 10^seq(from = -2, to = 2, by = 0.2)
+x <- as.matrix(widget[,-1])
+y <- widget$y
+ridge <- glmnet::glmnet(x , y, alpha = 0, lambda = grid)
+
+#c
+coeff <- broom::tidy(ridge)
+nointercept <- subset(coeff, term!="(Intercept)")
+ggplot(nointercept) +
+  geom_line(aes(lambda, estimate, color = term)) +
+  labs(x = "Lambda", y = "Estimated Coefficient", title = "Widget Data Coefficient Estimates vs. Lambda (Ridge Regression)", color = "Regressors")
+
+#Separate data into half training set and half test set
+set.seed(15)
+train <- sample(1:nrow(widget),nrow(widget)/2)
+test <- (-train)
+y.test <- y[test]
+
+#d
+ridge.mod <- glmnet::glmnet(x[train, ], y[train], alpha = 0, lambda = grid, 
+                            thresh =1e-12)
+cv <- cv.glmnet(x[train, ], y[train], alpha = 0)
+bestlam <- cv$lambda.min
+bestridge <- glmnet::glmnet(x , y, alpha = 0, lambda = bestlam)
+print(bestlam)
+```
+
+d: Using the training set, we found that the lambda value that should minimize MSE is 0.9971406. When you run the ridge regression on the full dataset with this lambda, the coefficients estimated are:
+
+```{r}
+print(coefficients(bestridge))
+```
+
+```{r}
+ridge.pred <- predict(ridge.mod, s=bestlam, newx = x[test, ])
+mean((ridge.pred-y.test)^2)
+```
+As shown above, for the training set and testing set generated in this question, the test MSE from the ridge regression using the "MSE-minimizing" lambda is 6.567986.
+
+#LASSO Regularization/Selection
+```{r}
+#b
+lasso <- glmnet::glmnet(x , y, alpha = 1, lambda = grid)
+
+#c
+lcoeff <- broom::tidy(lasso)
+lnointercept <- subset(lcoeff, term!="(Intercept)")
+ggplot(lnointercept) +
+  geom_line(aes(lambda, estimate, color = term)) +
+  labs(x = "Lambda", y = "Estimated Coefficient", title = "Widget Data Coefficient Estimates vs. Lambda (LASSO)", color = "Regressors")
+lasso.mod <- glmnet::glmnet(x[train, ], y[train], alpha = 1, lambda = grid)
+
+#d
+lcv <- cv.glmnet(x[train, ], y[train], alpha = 1)
+lbestlam <- lcv$lambda.min
+print(lbestlam)
+bestlasso <- glmnet::glmnet(x , y, alpha = 1, lambda = lbestlam)
+```
+
+d: Using the training set, we found that the lambda value that minimizes MSE is 0.2413208. When you run LASSO on the full dataset with this lambda, the coefficients estimated are:
+
+```{r}
+print(coefficients(bestlasso))
+```
+
+```{r}
+lasso.pred <- predict(lasso.mod, s=lbestlam, newx=x[test, ])
+mean((lasso.pred-y.test)^2)
+```
+As shown above, for the training set and testing set generated in this question, the test MSE from LASSO using the "MSE-minimizing" lambda is 5.282438.
+
+f: When comparing the coefficient estimates produced by ridge and LASSO (using the optimal lambdas), one major difference is that while ridge shrinks the coefficients of relatively nonsignificant regressors toward 0, it won't eliminate any regressor (i.e. it produces coefficients that are very close to 0 but not actually 0). This contrasts LASSO, which often produces coefficient estimates exactly equal to 0. In fact, of the 30 regressors, only 8 had nonzero coefficient estimates under LASSO. 
+
+Another observation is that in the plots of estimated coefficient vs. lambda, for the ridge regression, the lines are smooth curves, while for LASSO, the lines look straight and jagged. This may be a reflection of the fact that, in general, ridge regressions tend to shrink every dimension of the data by the same proportion, while LASSO more or less shrinks coefficients by similar incremental amounts, and sufficiently small coefficients are shrunk directly to 0. 
+
+Finally, in this case, LASSO gave a lower test set MSE than ridge (5.28 < 6.57), which may suggest that LASSO produces a better fit model for this data (i.e. a subset of the regressors are truly irrelevant to y and should be eliminated). 
+
+#Classification
+```{r}
+#a
+pol <- read.csv("pol_data.csv")
+set.seed(123)
+poltrain <- sample(1:nrow(pol),nrow(pol)*(2/3))
+traindata <- pol[poltrain, ]
+testdata <- pol[-poltrain, ]
+```
+
+##Naive Bayes Classification
+```{r}
+#b
+nb <- naiveBayes(group ~., data = traindata )
+#c
+nbpred <- predict(nb, testdata)
+#d
+table(Predicted = nbpred, Actual = testdata[ ,1])
+```
+
+##Support Vector Classification
+```{r}
+#b
+set.seed (1)
+tune.out = tune(svm, group~., data = traindata, kernel ="linear",
+                ranges =list(cost=c(0.001 , 0.01, 0.1, 1,5,10,100) ))
+bestmod <- tune.out$best.model
+#c
+svmpred <- predict(bestmod, testdata)
+#d
+table(Predicted = svmpred, Actual = testdata[ ,1])
+```
