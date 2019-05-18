@@ -1,0 +1,158 @@
+---
+title: "311-2 Homework 3"
+author: "Tina Zhang"
+date: "2019/5/10"
+output: pdf_document
+---
+
+```{r setup, message = FALSE, results='hide'}
+knitr::opts_chunk$set(echo = TRUE)
+packages <- c("readr","proxy","dplyr","tidytext","ggplot2","SnowballC","viridis",
+              "fields","tidyr","mixtools","tm")
+load.packages <- function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE)
+    library(x, character.only = TRUE)
+  }
+}
+lapply(packages, load.packages)
+setwd("C:/Users/tzwhi/Desktop/Northwestern/311-2/R")
+```
+
+#1. Distance/Similarity
+```{r, message = FALSE}
+#1
+mani <- read_csv("manifestos.csv")
+tokenmani <- unnest_tokens(mani, word, text) %>% 
+  anti_join(stop_words) %>% mutate(word = wordStem(word))
+dtm <- tokenmani %>% count(doc_id, word) %>% 
+  cast_dtm(doc_id, word, n) %>% removeSparseTerms(0.99) %>% as.matrix()
+
+#2
+euc <- dist(dtm) %>% as.matrix()
+print(euc)
+image.plot(1:ncol(euc), 1:ncol(euc), euc, axes = F, xlab = "", ylab = "",
+           main = "Euclidean Distances", col = viridis(64))
+axis(1, 1:ncol(euc), mani$doc_id, cex.axis = 0.6, las=3)
+axis(2, 1:ncol(euc), mani$doc_id, cex.axis = 0.6, las=1)
+```
+By Euclidean distance, the top 5 closest pairings, in order of most to least close, are Green Party-Wales, Green Party-DemUnion, DemUnion-Wales, Conservative-LibDem, and UKIP-LibDem.  
+```{r, message=FALSE}
+#3
+cos <- dist(dtm, method = "cosine") %>% as.matrix()
+print(cos)
+image.plot(1:ncol(cos), 1:ncol(cos), cos, axes = F, xlab="", ylab="",
+           main = "Cosine Distances", col = viridis(64))
+axis(1, 1:ncol(cos), mani$doc_id, cex.axis = 0.6, las=3)
+axis(2, 1:ncol(cos), mani$doc_id, cex.axis = 0.6, las=1)
+```
+By cosine distance, the top 5 closest pairings, in order of most to least close, are Conservative-LibDem, Conservative-Labour, Labour-LibDem, Green Party-LibDem, and Conservative-UKIP. 
+```{r}
+rowSums(dtm)
+```
+Overall, using cosine distance seems most appropriate because the different parties' manifestos have different lengths. For example, by word counts in the Term Document Matrix, the Green Party's manifesto has only 1599 words, while Conservative's has 12955 words, nearly 10 times more. Note that the length of manifestos is unlikely to be relevant to the parties' beliefs/ideals. 
+Cosine distance looks at the angle between vectors and the proportion of word count frequencies among terms, and it doesn't consider the magnitude of the word counts, so it corrects for the unequal lengths of different manifestos. Euclidean distance is inappropriate when the texts differ significantly in length because it will consider manifesto 1 to be more related to a term X than manifesto 2 if the word count of X is higher in 1 than in 2, which is erroneous because 1 may simply be longer than 2.
+
+#2. Clustering
+```{r}
+#1
+sani <- read.csv("311_sanitation_requests_2019.csv") %>%
+  drop_na(Latitude,Longitude)
+set.seed(25)
+k2 <- kmeans(sani[,c("Latitude","Longitude")], 2)
+sani$cluster <- k2$cluster
+
+#2
+table(Borough = sani$Borough, Cluster = sani$cluster)
+```
+As shown by the table above, the clusters mostly match the political boundaries, and the only boroughs that were split up in a significant way were Brooklyn and Manhattan. 
+```{r}
+#3
+nocentroids <- ggplot()+
+  geom_point(data = sani,aes(Latitude,Longitude,
+                      color=as.factor(cluster),size = 0.5,alpha = 0.1)) +
+  labs(x = "Latitude", y = "Longitude", color = "Calls by Cluster") +
+  guides(alpha = FALSE, size = FALSE) +
+  theme(panel.background = element_rect("lightblue"))
+print(nocentroids)
+
+#4
+centroids <- as.data.frame(k2$centers) %>% mutate (name = "")
+withcentroids <- nocentroids + 
+  geom_point(data = centroids, aes(Latitude,Longitude, shape = name)) + 
+  labs(shape = "Centroids")
+print(withcentroids)
+```
+```{r}
+#5
+set.seed(25)
+k3 <- kmeans(sani[,c("Latitude","Longitude")], 3)
+sani$cluster3 <- k3$cluster
+table(Borough = sani$Borough, Cluster = sani$cluster3)
+```
+In the table above, boroughs Brooklyn, Manhattan, and Queens were all split up into two clusters, while Bronx and Staten Island weren't split up. This is actually an increase in the number of split boroughs compared to the results from using 2 clusters.
+```{r}
+nocentroids3 <- ggplot()+
+  geom_point(data = sani,aes(Latitude,Longitude,
+                      color=as.factor(cluster3),size = 0.5,alpha = 0.1)) +
+  labs(x = "Latitude", y = "Longitude", color = "Calls by Cluster") +
+  guides(alpha = FALSE, size = FALSE) +
+  theme(panel.background = element_rect("lightblue"))
+print(nocentroids3)
+
+centroids3 <- as.data.frame(k3$centers) %>% mutate (name = "")
+withcentroids <- nocentroids3 + 
+  geom_point(data = centroids3, aes(Latitude,Longitude, shape = name)) + 
+  labs(shape = "Centroids")
+print(withcentroids)
+```
+
+```{r}
+#6
+wcss <- c()
+for (i in 1:15){
+  set.seed(57)
+  k <- kmeans(sani[,c("Latitude","Longitude")], centers = i, iter.max = 30)
+  sani[[paste0("k",i)]] <- k$cluster
+  wcss[i] <- k$tot.withinss
+}
+
+#7
+plot(1:15, wcss, type="b", pch=19, frame = FALSE, 
+     xlab="Number of clusters K",
+     ylab="Total within-clusters sum of squares")
+```
+Total within-clusters sum of squares is a measure of the total amount of variation among data points within the same cluster, so we want to minimize this number. In the plot above, the total within-clusters sum of squares still drops noticeably after the inclusion of the 4th cluster(facility) but doesn't change substantially with any more increases in the number of facilities, so building more facilities probably aren't worth the cost. Thus, I recommend building 4 facilities.
+
+```{r}
+#8
+set.seed(57)
+k4 <- kmeans(sani[,c("Latitude","Longitude")], centers = 4, iter.max = 30)
+centroids4 <- as.data.frame(k4$centers) %>% mutate (name = "")
+ggplot()+ geom_point(data = sani,aes(Latitude,Longitude,
+                      color=as.factor(k4),size = 0.5,alpha = 0.1)) + 
+  geom_point(data = centroids4, aes(Latitude,Longitude, shape = name)) + 
+  labs(x = "Latitude", y = "Longitude", color = "Calls by Cluster", 
+       shape = "Centroids") + guides(alpha = FALSE, size = FALSE) +
+  theme(panel.background = element_rect("lightblue"))
+
+```
+
+9. Euclidean distance measures the length of the straight line segment connecting two points, but in real life, people can rarely travel between two points via a straight line. There can be a big difference between Euclidean distance and travel time, especially after considering potentially complex routes and traffic, which are what really matters when responding to customer calls.
+
+#3. EM
+```{r}
+#1
+set.seed(52)
+sani500 <- sani[sample(nrow(sani),500),]
+#2
+mod2 <- mvnormalmixEM(select(sani500, Latitude, Longitude), k=2)
+plot(mod2, whichplots = 2, xlab2="Latitude", ylab2="Longitude")
+```
+
+```{r}
+#3
+mod3 <- mvnormalmixEM(select(sani500, Latitude, Longitude), k=3)
+plot(mod3, whichplots = 2, xlab2="Latitude", ylab2="Longitude")
+```
+
