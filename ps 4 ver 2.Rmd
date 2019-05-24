@@ -1,0 +1,69 @@
+---
+title: "Homework 4"
+author: "Tina Zhang"
+date: "2019/5/20"
+output: pdf_document
+---
+
+```{r setup, message = FALSE, results='hide'}
+knitr::opts_chunk$set(echo = TRUE)
+packages <- c("readr","proxy","dplyr","tidytext","ggplot2","SnowballC","topicmodels",
+              "stm","tidyr","mixtools","tm")
+load.packages <- function(x) {
+  if (!require(x, character.only = TRUE)) {
+    install.packages(x, dependencies = TRUE)
+    library(x, character.only = TRUE)
+  }
+}
+lapply(packages, load.packages)
+setwd("C:/Users/tzwhi/Desktop/Northwestern/311-2")
+```
+
+#Question 1
+```{r fig.height= 15, fig.width= 10}
+#1
+inmates <- read.csv("tx_deathrow_full.csv", stringsAsFactors = FALSE, encoding = "UTF-8") %>%
+  mutate(doc_id = row_number(), text = Last.Statement) %>%
+  select(doc_id, text, everything())
+corp <- VCorpus(DataframeSource(inmates)) %>%
+  tm_map(removePunctuation) %>%
+  tm_map(content_transformer(tolower)) %>%
+  tm_map(removeWords, stopwords("english")) %>%
+  tm_map(stemDocument)
+dtm <- DocumentTermMatrix(corp)
+empty_rows <- which(rowSums(as.matrix(dtm))==0)
+dtm <- corp[-empty_rows] %>% DocumentTermMatrix()
+
+#2
+lda <- LDA(dtm, k=10, control = list(seed=25))
+
+#3
+tidy(lda) %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill=factor(topic))) + geom_col(show.legend = FALSE) +
+  facet_wrap(~topic, scales = "free_y", nrow = 5) + coord_flip() +
+  xlab("Term") + ylab("Beta") + 
+  labs(title = "LDA Analysis of Texas Death Row Statements, K = 10",
+                      subtitle = "Top 10 Most Likely Words by Topic")
+```
+
+#Question 2
+```{r, results= "hide"}
+#1
+out <- stm::readCorpus(dtm, type = "slam")
+
+#2
+mod.out <- stm(documents = out$documents, vocab = out$vocab, K = 10,
+               prevalence = ~Race, data = inmates[-empty_rows, ])
+```
+
+```{r}
+#3
+summary(mod.out)
+```
+
+4. The topics found when conditioning on venue appear more differentiated than those found using standard LDA. For example, topics 8 and 5 appear tied to thankfulness and love, while topics 2 and 6 appear tied to religion and forgiveness. 
+In contrast, there's a lot of overlap in the top words for each topic in LDA, and it's harder to identify what each topic is about. For example, the word "love" appears in 9 of the 10 topics, while words like "god", "forgiv", and "sorri", and "thank" also appear in many of the topics.
